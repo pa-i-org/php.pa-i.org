@@ -1,0 +1,27 @@
+
+	wavediagram.php
+
+[100128:pai]release.
+
+
+	タイミングチャートの入力方法
+
+- 時間順に入力する。時間を1コマ進めるには、「|」を使用する
+- 信号名のあとに記号を入力して、信号の状態を入力する
+-- 「DATA+」は、DATAがH
+-- 「DATA-」は、DATAがL
+-- 「DATA!」は、DATAがZ (ハイインピーダンス)
+-- 「DATA?」は、DATAがX (不定)
+-- 「DATA~」は、DATAがクロック ---- 未実装
+-- 「DATA(name)」は、DATAの値がname
+- 基本的な入力方法は、以下の通り
+> 信号名 記号 信号名 記号 | 信号名 記号 | 信号名 記号 信号名 記号 信号名 記号 ....
+> 例: CLK-OUT(0)|CLK+OUT(1)|CLK-|CLK+OUT(2)|CLK-|CLK+OUT(3)|CLK-
+
+- 「|」の前にコメントを入れることができる
+> 例: CLK-OUT(2)|CLK+OUT(3)|CLK-|CLK+OUT(0)overflow|CLK-|CLK+OUT(1)|CLK-|CLK+OUT(2)|CLK-
+- コメントの最後に「>」または「#」を入れると、次のコメントまでの両矢印が引かれる
+- 次のコメントがない場合は、「>」または「#」だけを記述する
+> 例: CLK-||CLK+min10ms>||||CLK->|
+
+# end of file

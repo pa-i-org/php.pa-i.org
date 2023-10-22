@@ -1,0 +1,479 @@
+<?php
+$version = "text2pdfb5 140407";
+
+
+class	systeminfo {
+	var	$pdffontname = "KozMinPro-Regular-Acro";
+	var	$pdflicense = "";
+	var	$nonkf = 0;
+	var	$zfpath = null;
+	var	$font;
+	var	$op_body;
+	var	$cl_body = "<HR></BODY></HTML>";
+	function	systeminfo() {
+		global	$version;
+		$this->op_body = "<HTML><HEAD><TITLE>$version</TITLE></HEAD><BODY>";
+		$this->font = array();
+	}
+}
+$systeminfo =& new systeminfo();
+include("env.php");
+
+$filelist = array();
+$inputlist = "";
+for ($i=0; $i<10; $i++) {
+	$name = ($i == 0)? "fl" : "file{$i}";
+	$inputlist .= "<LI><INPUT type=file name={$name}>\n";
+	$file = @$_FILES[$name];
+	if (is_uploaded_file($file["tmp_name"]) === TRUE)
+		$filelist[] = $file;
+}
+
+if (count($filelist) <= 0) {
+	print <<<eoo
+<HTML><HEAD><TITLE>{$version}</TITLE></HEAD><BODY>
+
+<H1>{$version}</H1>
+
+<FORM enctype="multipart/form-data" method=POST>
+<OL>
+{$inputlist}
+</OL>
+<P>
+	<SELECT name=color size=0>
+		<OPTION value=0 selected>K</OPTION>
+		<OPTION value=1>B</OPTION>
+		<OPTION value=2>R</OPTION>
+		<OPTION value=3>M</OPTION>
+		<OPTION value=4>G</OPTION>
+		<OPTION value=5>C</OPTION>
+		<OPTION value=6>Y</OPTION>
+	</SELECT>
+	<SELECT name=paper size=0>
+		<OPTION value=1 selected>B5</OPTION>
+		<OPTION value=101>B5->A4center</OPTION>
+		<OPTION value=202>memo->A5center</OPTION>
+	</SELECT>
+	<SELECT name=mode size=0>
+		<OPTION value=0 selected>single</OPTION>
+		<OPTION value=3>double columns</OPTION>
+	</SELECT>
+	max pages: <INPUT type=text name=maxpages value=0 size=4>
+	<INPUT type=submit>
+</P>
+</FORM>
+
+<HR>
+</BODY></HTML>
+eoo;
+	return;
+}
+
+
+$color = 0;
+if (ereg('^([0-6])', @$_REQUEST["color"], $array))
+	$color = $array[1] + 0;
+
+$maxpages = 0;
+if (ereg('^([0-9]+)', @$_REQUEST["maxpages"], $array))
+	$maxpages = $array[1] + 0;
+
+class	page {
+	var	$pdf = null;
+	var	$x = 0;
+	var	$y = 0;
+	var	$col = 0;
+	var	$max_x = 150;
+	var	$max_y = 100;
+	var	$max_col = 1;
+	var	$colpitch = 0;
+	var	$margin_left;
+	var	$margin_top;	// from bottom
+	var	$fontsize;
+	var	$hfontsize;
+	var	$charpitch;
+	var	$linepitch;
+	var	$title;
+	var	$page = 1;
+	var	$inpage = null;
+	var	$fontlist;
+	var	$width = 182;
+	var	$height = 257;
+	var	$currentfont = null;
+	function	page($title = "") {
+		global	$systeminfo;
+		
+		$this->fontsize = $this->mm2pnt(2);
+		$this->hfontsize = $this->fontsize * 7.25 / 8;
+		$this->charpitch = $this->fontsize / 2;
+		$this->linepitch = $this->fontsize * 9.25 / 8;
+		
+		switch (@$_REQUEST["mode"] + 0) {
+			case	3:
+				$this->max_col = 2;
+				$this->max_x = 70;
+				$this->colpitch = $this->charpitch * 80;
+				break;
+		}
+		
+		$this->fontlist = array();
+		
+		set_include_path(get_include_path().PATH_SEPARATOR.$systeminfo->zfpath);
+		require_once('Zend/Loader/Autoloader.php');
+		Zend_Loader_Autoloader::getInstance();
+		
+		$this->pdf =& new Zend_Pdf();
+#if 1
+		$this->margin_top = $this->mm2pnt($this->height - 9) + $this->linepitch;
+#else
+		$this->margin_top = $this->mm2pnt($this->height - 13) + $this->linepitch;
+#endif
+		switch (@$_REQUEST["paper"] + 0) {
+			default:
+				$this->margin_left = $this->mm2pnt(20);
+				break;
+			case	101:
+				$this->width = 210;
+				$this->margin_left = $this->mm2pnt(20 + (210 - 182) / 2);
+				break;
+			case	202:
+				$this->width = 210;
+				$this->height = 210;
+				$this->maxcol = 1;
+				$this->max_x = 60;
+				$this->max_y = 50;
+				$this->margin_left = $this->mm2pnt(12 + (210 - 148) / 2);
+				$this->margin_top = $this->mm2pnt(157);
+				break;
+		}
+		$this->settitle($title);
+	}
+	function	mm2pnt($val) {
+		return $val / 25.4 * 72;
+	}
+	function	setfont($num, $size) {
+		global	$systeminfo;
+		
+		$name = $systeminfo->font[$num];
+		if (@$this->fontlist[$name] === null)
+			$this->fontlist[$name] =& Zend_Pdf_Font::fontWithPath($systeminfo->fontpath.$name);
+		if ($this->currentfont !== $num * 1000 + $size) {
+			$this->currentfont = $num * 1000 + $size;
+			$this->inpage->setFont($this->fontlist[$name], $size);
+		}
+	}
+	function	putstringh($x, $y, $string) {
+		$this->setfont(0, $this->hfontsize);
+		$this->inpage->drawText($string, $x, $y, "UTF-8");
+	}
+	function	putstring($x, $y, $string) {
+		$this->setfont(1, $this->hfontsize);
+		$this->inpage->drawText(mb_convert_encoding($string, "UTF-8", "EUC-JP"), $x, $y, "UTF-8");
+	}
+	function	settitle($title = "") {
+		$this->title = $title;
+	}
+	function	flushpage() {
+		if ($this->inpage === null)
+			return;
+		if (++$this->col < $this->max_col) {
+			$this->x = 0;
+			$this->y = 0;
+			return;
+		}
+#		$x0 = $this->mm2pnt($this->width - 30) - strlen($this->title) * $this->fontsize / 2;
+#		$y0 = $this->mm2pnt($this->height - 8);
+#		$this->putstringh($x0, $y0, $this->title);
+		$x0 = $this->margin_left;
+		$y0 = $this->margin_top + $this->linepitch;
+		$this->putstringh($x0, $y0, str_repeat(" ", $this->max_x - strlen($this->title)).$this->title);
+		
+#		$x0 = ($this->mm2pnt($this->width) - $this->fontsize) / 2;
+#		$y0 = $this->mm2pnt(10);
+#		$this->putstringh($x0, $y0, "p.".($this->page++));
+		$x0 = $this->margin_left + $this->charpitch * ($this->max_x / 2 - 2);
+		$y0 = $this->margin_top - $this->linepitch * ($this->max_y + 2);
+		$this->putstringh($x0, $y0, "p.".($this->page++));
+		
+		$this->x = 0;
+		$this->y = 0;
+		$this->col = 0;
+		$null = null;
+		$this->inpage =& $null;
+	}
+	function	newpage() {
+		global	$color;
+		
+		$this->flushpage();
+		$this->currentfont = null;
+		$w = floor($this->mm2pnt($this->width));
+		$h = floor($this->mm2pnt($this->height));
+		$this->inpage =& $this->pdf->newPage("{$w}:{$h}:");
+		$this->pdf->pages[] =& $this->inpage;
+		
+		$this->inpage->setLineWidth(0.5);
+		$c =& new Zend_Pdf_Color_Rgb(($color >> 1) & 1, ($color >> 2) & 1, $color & 1);
+		$this->inpage->setLineColor($c);
+		$this->inpage->setFillColor($c);
+		
+		switch (@$_REQUEST["paper"] + 0) {
+			case	202:
+				$l = $this->mm2pnt(10);
+				
+				$x = $this->margin_left + $this->mm2pnt(40);
+				$y = $this->mm2pnt(168);
+				$xlist = array($x - $l, $x, $x + $l);
+				$ylist = array($y + $l, $y, $y + $l);
+				$this->inpage->drawPolygon($xlist, $ylist, Zend_Pdf_Page::SHAPE_DRAW_STROKE);
+				
+				$y = $this->mm2pnt(30);
+				$xlist = array($x - $l, $x, $x + $l);
+				$ylist = array($y - $l, $y, $y - $l);
+				$this->inpage->drawPolygon($xlist, $ylist, Zend_Pdf_Page::SHAPE_DRAW_STROKE);
+				
+				$x = $this->mm2pnt((210 - 148) / 2 + 80);
+				$y = $this->mm2pnt(205 + 67) / 2;
+				$xlist = array($x + $l, $x, $x + $l);
+				$ylist = array($y + $l, $y, $y - $l);
+				$this->inpage->drawPolygon($xlist, $ylist, Zend_Pdf_Page::SHAPE_DRAW_STROKE);
+				break;
+		}
+		
+		for ($col=0; $col<$this->max_col; $col++) {
+			for ($x=0; $x<=$this->max_x; $x++) {
+				$pnt_x = $this->margin_left + $this->charpitch * $x + $this->colpitch * $col;
+				switch ($x % 10) {
+					case	0:
+						$xlist = array($pnt_x, $pnt_x);
+						$ylist = array($this->margin_top + $this->fontsize * 0.6, $this->margin_top);
+						$this->inpage->drawPolygon($xlist, $ylist, Zend_Pdf_Page::SHAPE_DRAW_STROKE);
+						continue;
+					case	5:
+						$xlist = array($pnt_x, $pnt_x);
+						$ylist = array($this->margin_top + $this->fontsize * 0.3, $this->margin_top);
+						$this->inpage->drawPolygon($xlist, $ylist, Zend_Pdf_Page::SHAPE_DRAW_STROKE);
+						continue;
+					default:
+						$this->inpage->drawCircle($pnt_x, $this->margin_top + $this->fontsize * 0.1, 0.25, Zend_Pdf_Page::SHAPE_DRAW_STROKE);
+						continue;
+				}
+			}
+			for ($y=0; $y<=$this->max_y; $y+=5) {
+				$x0 = $this->margin_left - $this->charpitch * 3 + $this->colpitch * $col;
+				$y0 = $this->margin_top - $this->linepitch * $y;
+				$this->putstringh($x0, $y0, ($y % 10)? "-" : (($y / 10).""));
+			}
+		}
+	}
+	function	close() {
+		$this->flushpage();
+		$content = $this->pdf->render();
+		header("Content-Type: application/pdf");
+		header('Content-Disposition: inline; filename="text2pdf.pdf"');
+		header("Content-Length: ".strlen($content));
+		print $content;
+	}
+	function	checkpos($length = 0) {
+		if ($this->x + $length > $this->max_x) {
+			$this->x = 0;
+			$this->y++;
+		}
+		if ($this->y >= $this->max_y)
+			$this->flushpage();
+	}
+	function	putchar($code) {
+		global	$maxpages;
+		
+		switch ($code) {
+			case	9:
+				$this->checkpos(1);
+				$this->x = floor(($this->x + 8) / 8) * 8;
+				return 0;
+			case	0xa:
+				$this->x = 0;
+				$this->y++;
+				return 0;
+			case	0xc:
+				$this->flushpage();
+				return 0;
+		}
+		if ($code < 0x20)
+			return 0;
+		$length = ($code < 0x100)? 1 : 2;
+		$this->checkpos($length);
+		if ($this->inpage === null) {
+			if ($maxpages && ($maxpages <= count($this->pdf->pages)))
+				return -1;
+			$this->newpage();
+		}
+		$x0 = $this->margin_left + $this->charpitch * $this->x + $this->colpitch * $this->col;
+		$y0 = $this->margin_top - $this->linepitch * ($this->y + 1);
+		if ($length == 1)
+			$this->putstringh($x0, $y0, chr($code));
+		else
+			$this->putstring($x0, $y0, chr($code >> 8).chr($code & 0xff));
+		$this->x += $length;
+		return 0;
+	}
+}
+
+
+#
+# main
+#
+
+$genv =& new page();
+
+foreach ($filelist as $file) {
+	$genv->settitle(@mb_convert_encoding($file["name"], "EUC-JP")."");
+	if ($systeminfo->nonkf == 0)
+		$fp = popen("nkf -e ".escapeshellarg($file["tmp_name"]), "r") or die("popen failed.");
+	else
+		$fp = fopen($file["tmp_name"], "r") or die("fopen failed.");
+	
+	$contents = stream_get_contents($fp);
+	$fp = null;
+	foreach (split("\r|\n|\r\n", $contents) as $line) {
+		if (ereg('^\*\*\* campaign/([0-9]+)/([0-9]+) \(', $line, $a)) {
+			switch ($a[2] + 0) {
+				case	101:
+					$line .= " 両方 マイコン";
+					break;
+				case	101:
+					$line .= " 両方 電子回路";
+					break;
+				case	102:
+					$line .= " 両方 管理職の時間は貴重です";
+					break;
+				case	103:
+					$line .= " 両方 きもと/電子回路";
+					break;
+				case	201:
+					$line .= " 人系 マイコン";
+					break;
+				case	202:
+					$line .= " 人系 電子回路";
+					break;
+				case	203:
+					$line .= " 人系 PICのプロをお探し";
+					break;
+				case	204:
+					$line .= " 人系 きもと/電子回路";
+					break;
+				case	301:
+					$line .= " 保守系 マイコン回路の試作-保守";
+					break;
+				case	302:
+					$line .= " 保守系 自社開発システムの保守";
+					break;
+				case	303:
+					$line .= " 保守系 特注システムの保守";
+					break;
+				case	304:
+					$line .= " 保守系 きもと";
+					break;
+				case	401:
+					$line .= " 開発系 マイコン";
+					break;
+				case	402:
+					$line .= " 開発系 電子回路";
+					break;
+				case	403:
+					$line .= " 開発系 納期と技術で";
+					break;
+				case	404:
+					$line .= " 開発系 きもと/電子回路";
+					break;
+				case	1001:
+					$line .= " 県・市 もう";
+					break;
+				case	1002:
+					$line .= " 県・市 回路も";
+					break;
+				case	1003:
+					$line .= " 県・市 きもと";
+					break;
+				case	1004:
+					$line .= " 県・市 ハード担当者は十分";
+					break;
+				case	1005:
+					$line .= " 県・市 回路設計レスキュー";
+					break;
+				case	1006:
+					$line .= " 県・市 組み込みレスキュー";
+					break;
+				case	1007:
+					$line .= " 県・市 オンラインで";
+					break;
+				case	1008:
+					$line .= " 県・市 自動で";
+					break;
+				case	1009:
+					$line .= " 県・市 安心の自動";
+					break;
+				case	1010:
+					$line .= " 県・市 回路設計を自動で";
+					break;
+				case	1011:
+					$line .= " 県・市 ソフトハード自動";
+					break;
+				case	1012:
+					$line .= " 県・市 少数精鋭の御社の";
+					break;
+				case	1013:
+					$line .= " 県・市 急ぎのPIC";
+					break;
+				case	1014:
+					$line .= " 県・市 急ぎのファーム";
+					break;
+				case	1015:
+					$line .= " 県・市 遅れられない";
+					break;
+				case	1016:
+					$line .= " 県・市 あと10日でも";
+					break;
+				case	1017:
+					$line .= " 県・市 最短3日の";
+					break;
+				case	1018:
+					$line .= " 県・市 仕様書から";
+					break;
+				case	1019:
+					$line .= " 県・市 どう作れば わからない";
+					break;
+				case	1020:
+					$line .= " 県・市 どうやって お悩み";
+					break;
+				case	1021:
+					$line .= " 県・市 どう作れば お悩み";
+					break;
+				case	1100:
+					$line .= " 県・市 試作･ノウハウ";
+					break;
+				case	1101:
+					$line .= " 県・市 作り方まで";
+					break;
+				case	1103:
+					$line .= " 県・市 設計ノウハウまで";
+					break;
+				case	1104:
+					$line .= " 県・市 低原価な";
+					break;
+			}
+		}
+		
+		$pos = 0;
+		while ($pos < strlen($line)) {
+			$c = ord(substr($line, $pos++, 1));
+			if ($c >= 0x80)
+				$c = ($c << 8) | ord(substr($line, $pos++, 1));
+			if ($genv->putchar($c) < 0)
+				break;
+		}
+		if ($genv->putchar(0xa) < 0)
+			break;
+	}
+	$genv->flushpage();
+}
+$genv->close();
+?>

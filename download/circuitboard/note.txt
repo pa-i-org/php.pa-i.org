@@ -1,0 +1,6 @@
+
+[110331]enables 'o' 'O' as '*', 'l' 'L' as '!'. ignores ' '.
+[100908]fix hang up when command terminated with [1-9].
+[100801]Shorten command length. Support line with half-pitch.
+[100729]create.
+

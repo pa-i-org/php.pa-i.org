@@ -1,0 +1,228 @@
+<html><head><title>jstest.html</title>
+<style type="text/css">
+<!--
+.box {position:absolute; left:10px; top:10px; width:300px; height:250px; background-color:#000000;}
+.dot {position:absolute; background-color:#00ff00; height:1px;}
+.bar {position:absolute; background-color:#004000;}
+--></style>
+<script type="text/javascript"><!--
+
+var	maxbar = 100;
+var	areawidth = 300;
+var	areaheight = 250;
+var	speed = 10;
+var	orglist = new Array();
+var	sorterlist = new Array();
+var	currenttime = 0;
+
+
+function	putbars(sorter) {
+	var	w = areawidth * 0.6 / maxbar;
+	var	barid = "bar"+(sorterlist.length)+"_";
+	
+	if (orglist.length == 0)
+		for (var i=0; i<maxbar; i++)
+			orglist[i] = Math.round(Math.random() * areaheight);
+	
+	for (var i=0; i<maxbar; i++) {
+		var	l = (i * areawidth + 0.0) / maxbar;
+		var	h = orglist[i];
+		var	t = areaheight - orglist[i];
+		document.write('<DIV class=bar id="'+barid+i+'" style="left:'+l+'px; top:'+t+'px; width:'+w+'px; height:'+h+'px;"></DIV>');
+		document.write('<DIV class=dot id="d'+barid+i+'" style="left:'+l+'px; top:'+t+'px; width:'+w+'px; height:1px;"></DIV>');
+	}
+	var	newsorter = new sorter();
+	var	spenttime = 0;
+	
+	newsorter.getbar = function(i) {
+		return document.getElementById(barid+i);
+	};
+	newsorter.getdot = function(i) {
+		return document.getElementById("d"+barid+i);
+	};
+	newsorter.getval = function(i) {
+		spenttime++;
+		return parseInt(this.getbar(i).style.height);
+	};
+	newsorter.setval = function(i, val) {
+		spenttime++;
+		this.getbar(i).style.height = val+"px";
+		this.getbar(i).style.top = (areaheight - val)+"px";
+		this.getdot(i).style.top = (areaheight - val)+"px";
+	};
+	newsorter.swapval = function(i, j) {
+		var	val1 = this.getval(i);
+		var	val2 = this.getval(j);
+		spenttime--;
+		spenttime--;
+		
+		this.setval(i, val2);
+		this.setval(j, val1);
+	};
+	newsorter.getspenttime = function() {
+		return spenttime;
+	}
+	sorterlist = sorterlist.concat(newsorter);
+}
+
+
+function	init() {
+	setInterval(function() {
+		currenttime += speed;
+		for (var i=0; i<sorterlist.length; i++) {
+			var	sorter = sorterlist[i];
+			
+			while (sorter.getspenttime() < currenttime) {
+				var	oldtime = sorter.getspenttime();
+				
+				sorter.tick();
+				if (oldtime == sorter.getspenttime())
+					break;
+
+			}
+		}
+	}, 50);
+}
+
+//--></script>
+</head><body bgcolor="#404040" onload="init()">
+
+<DIV class=box>
+<script type="text/javascript"><!--
+putbars(function() {
+	var	i = 0;
+	this.tick = function() {
+		if (i >= maxbar - 1)
+			i = 0;
+		if (this.getval(i) > this.getval(i + 1))
+			this.swapval(i, i + 1);
+		i++;
+	};
+});
+//--></script>
+</DIV>
+
+<DIV class=box style="left:330px;">
+<script type="text/javascript"><!--
+putbars(function() {
+	var	i = 0;
+	this.tick = function() {
+		if (i >= maxbar - 1)
+			return;
+		
+		var	min_i = i;
+		var	min_val = this.getval(i);
+		
+		for (var j=i+1; j<maxbar; j++)
+			if (min_val > this.getval(j)) {
+				min_i = j;
+				min_val = this.getval(min_i);
+			}
+		if (min_i != i)
+			this.swapval(min_i, i);
+		i++;
+	};
+});
+//--></script>
+</DIV>
+
+<DIV class=box style="top:280px;">
+<script type="text/javascript"><!--
+putbars(function() {
+	var	array = new Array();
+	var	pos = 0;
+	var	size = 0;
+	var	unit = 1;
+	this.tick = function() {
+		if (pos < size) {
+			this.setval(pos, array[pos]);
+			pos++;
+			return;
+		}
+		if (size >= maxbar) {
+			if (unit >= maxbar)
+				return;
+			size = 0;
+			pos = 0;
+			unit *= 2;
+		}
+		var	left = size;
+		var	leftstop = size + unit;
+		var	right = size + unit;
+		var	rightstop = size + unit * 2;
+		
+		if (leftstop > maxbar)
+			leftstop = maxbar;
+		if (rightstop > maxbar)
+			rightstop = maxbar;
+		while ((left < leftstop)&&(right < rightstop)) {
+			if (this.getval(left) <= this.getval(right))
+				array[size++] = this.getval(left++);
+			else
+				array[size++] = this.getval(right++);
+		}
+		while (left < leftstop)
+			array[size++] = this.getval(left++);
+		while (right < rightstop)
+			array[size++] = this.getval(right++);
+	}
+});
+//--></script>
+</DIV>
+
+<DIV class=box style="left:330px; top:280px;">
+<script type="text/javascript"><!--
+putbars(function() {
+	var	left = 0;
+	var	startleft = 0;
+	var	right = maxbar - 1;
+	var	startright = maxbar - 1;
+	var	val = null;
+	var	stack = new Array();
+	var	stacklevel = 0;
+	
+	this.tick = function() {
+		if (val === null)
+			val = (this.getval(left) + this.getval(right)) / 2;
+		if (left >= right)
+			return;
+		
+		while ((left <= startright)&&(this.getval(left) <= val))
+			left++;
+		while ((startleft <= right)&&(this.getval(right) >= val))
+			right--;
+		if (left < right)
+			this.swapval(left++, right--);
+		if (left < right)
+			return;
+		
+		if (startright - left >= 1) {
+			var	range = new Object();
+			range.left = left;
+			range.right = startright;
+			stack[stacklevel++]= range;
+		}
+		if (right - startleft >= 1) {
+			var	range = new Object();
+			range.left = startleft;
+			range.right = right;
+			stack[stacklevel++]= range;
+		}
+		if (stacklevel <= 0)
+			return;
+		
+		var	range = stack[--stacklevel];
+		left = range.left;
+		startleft = range.left;
+		right = range.right;
+		startright = range.right;
+		val = 0;
+		for (var i=left; i<=right; i++)
+			val += this.getval(i);
+		val /= (right - left + 1.0);
+	};
+});
+//--></script>
+</DIV>
+
+</body></html>
